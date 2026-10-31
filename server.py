@@ -220,10 +220,21 @@ class Companion:
     def loop(self):
         n = 0
         every = max(1, round(self.cfg["revenant_interval"] / self.cfg["scan_interval"]))
+        capture_failing = False
         while True:
             t0 = time.time()
             try:
                 self.scan_once(with_revenants=(n % every == 0))
+                if capture_failing:
+                    print("Capture de l'écran rétablie.")
+                    capture_failing = False
+            except capture.CaptureError as e:
+                # écran verrouillé, veille… : passager, un seul message tant que ça dure
+                if not capture_failing:
+                    print(f"Capture de l'écran impossible pour l'instant ({e}), nouvel essai en continu.")
+                    capture_failing = True
+                with self.lock:
+                    self.status["error"] = "capture de l'écran impossible (écran verrouillé ?)"
             except Exception as e:
                 traceback.print_exc()
                 with self.lock:
@@ -289,7 +300,10 @@ class Companion:
     def snapshot_jpeg(self, which):
         if which == "full":
             hwnd = capture.find_game_window()
-            img = capture.grab_window(hwnd) if hwnd else None
+            try:
+                img = capture.grab_window(hwnd) if hwnd else None
+            except capture.CaptureError:
+                img = None
             if img is not None:
                 img.thumbnail((1280, 1280))
         else:

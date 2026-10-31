@@ -52,14 +52,38 @@ _local = threading.local()  # une instance mss par thread (mss n'est pas partage
 TILE = (640, 520)
 
 
+class CaptureError(Exception):
+    """L'écran ne peut pas être copié pour l'instant (écran verrouillé, veille, fenêtre UAC…)."""
+
+
 def _sct():
     if not hasattr(_local, "sct"):
         _local.sct = mss.MSS()
     return _local.sct
 
 
+def _reset_sct():
+    sct = _local.__dict__.pop("sct", None)
+    if sct is not None:
+        try:
+            sct.close()
+        except mss.ScreenShotError:
+            pass  # contexte déjà invalide : rien à libérer de plus
+
+
 def _grab(x, y, w, h):
-    shot = _sct().grab({"left": x, "top": y, "width": w, "height": h})
+    box = {"left": x, "top": y, "width": w, "height": h}
+    try:
+        shot = _sct().grab(box)
+    except mss.ScreenShotError:
+        # mss garde le contexte d'affichage de l'écran : après une veille, un verrouillage ou un changement de
+        # résolution / de mode plein écran il n'est plus valable (BitBlt échoue) ; on en recrée un et on réessaie
+        _reset_sct()
+        try:
+            shot = _sct().grab(box)
+        except mss.ScreenShotError as e:
+            _reset_sct()
+            raise CaptureError(str(e)) from e
     return Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
 
 
