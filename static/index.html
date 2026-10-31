@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#0b1020">
+<link rel="manifest" href="/manifest.json">
+<title>PG Companion</title>
+<style>
+  :root {
+    --bg: #0b1020; --panel: #121a30; --panel2: #18223d; --line: #263255;
+    --text: #e6ebf5; --muted: #8a96b3; --accent: #4fb3ff; --orange: #f0a245;
+    --red: #ff5a5a; --green: #46d17d; --yellow: #f3d34a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { display: flex; flex-direction: column; height: 100dvh; }
+  header { display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    padding-top: max(10px, env(safe-area-inset-top)); background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 16px; margin: 0; flex: 1; letter-spacing: .3px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--red); flex: none; }
+  .dot.ok { background: var(--green); } .dot.warn { background: var(--yellow); }
+  #statusText { color: var(--muted); font-size: 12px; }
+  .iconbtn { background: none; border: 1px solid var(--line); color: var(--text); border-radius: 8px;
+    padding: 5px 9px; font-size: 13px; }
+  nav { display: flex; background: var(--panel); border-bottom: 1px solid var(--line); }
+  nav button { flex: 1; background: none; border: 0; color: var(--muted); padding: 11px 0; font-size: 14px;
+    font-weight: 600; border-bottom: 2px solid transparent; position: relative; }
+  nav button.active { color: var(--text); border-bottom-color: var(--accent); }
+  .badge { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 6px; border-radius: 9px;
+    background: var(--red); color: #fff; font-size: 11px; line-height: 18px; }
+  .badge:empty { display: none; }
+  main { flex: 1; min-height: 0; position: relative; }
+  section { position: absolute; inset: 0; display: none; flex-direction: column; }
+  section.active { display: flex; }
+
+  /* tchat */
+  #chatList { flex: 1; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+  .msg { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 7px 10px; }
+  .msg .meta { font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: baseline; }
+  .msg .chan { font-weight: 600; color: #a9b4cf; }
+  .msg .chan.escouade { color: var(--orange); } .msg .chan.global { color: var(--accent); }
+  .msg .author { color: var(--text); font-weight: 600; font-size: 13px; }
+  .msg .time { margin-left: auto; }
+  .msg .body { margin-top: 2px; word-wrap: break-word; }
+  .msg.mine { border-color: #2f5f8f; background: #12233a; }
+  .msg.pending { opacity: .6; border-style: dashed; }
+  .msg.hl { border-color: var(--yellow); }
+  .empty { color: var(--muted); text-align: center; margin: 30px 10px; font-size: 14px; }
+  #composer { display: flex; gap: 8px; padding: 8px 10px; padding-bottom: max(8px, env(safe-area-inset-bottom));
+    background: var(--panel); border-top: 1px solid var(--line); }
+  #composer input { flex: 1; min-width: 0; background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+    border-radius: 20px; padding: 10px 14px; font-size: 16px; outline: none; }
+  #composer input:focus { border-color: var(--accent); }
+  #composer button { background: var(--accent); color: #031426; border: 0; border-radius: 20px; padding: 0 16px;
+    font-weight: 700; font-size: 15px; }
+  #composer button:disabled { opacity: .5; }
+  #chanBar { display: flex; gap: 6px; overflow-x: auto; padding: 8px 10px 0; background: var(--panel); border-top: 1px solid var(--line);
+    scrollbar-width: none; }
+  #chanBar::-webkit-scrollbar { display: none; }
+  #chanBar + #composer { border-top: 0; }
+  .chip { flex: none; background: var(--panel2); border: 1px solid var(--line); color: var(--muted); border-radius: 14px;
+    padding: 5px 11px; font-size: 13px; white-space: nowrap; }
+  .chip.on { border-color: var(--accent); color: var(--text); background: #16304d; }
+  .chip.cur::before { content: "● "; color: var(--green); font-size: 10px; }
+  .chip:disabled { opacity: .5; }
+  .chanhint { flex: none; align-self: center; font-size: 12px; color: #ef4444; white-space: nowrap; }
+  .drone { flex: none; border: 1px solid var(--line); background: var(--panel2); color: var(--muted); border-radius: 14px;
+    padding: 4px 10px; font-size: 12px; font-weight: 600; }
+  .drone::before { content: "●"; margin-right: 5px; }
+  .drone.on { color: #22c55e; border-color: #22c55e; } .drone.off { color: #ef4444; border-color: #ef4444; }
+  .drone:disabled { opacity: .5; }
+  .drone[hidden] { display: none; }
+  .live { padding: 8px 12px 0; display: none; }
+  .live img { width: 100%; border-radius: 8px; border: 1px solid var(--line); display: block; }
+  .live.on { display: block; }
+
+  /* revenants */
+  #revScroll { flex: 1; overflow-y: auto; padding: 10px 12px 20px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
+  .card.danger { border-left: 4px solid var(--red); }
+  .card .top { display: flex; align-items: baseline; gap: 8px; }
+  .card .name { font-weight: 700; color: var(--yellow); font-size: 16px; }
+  .card.danger .name { color: #ff8b8b; }
+  .card .when { margin-left: auto; color: var(--muted); font-size: 12px; }
+  .card .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; margin-top: 4px; font-size: 13px; }
+  .card .grid span { color: var(--muted); }
+  .bar { height: 5px; background: var(--panel2); border-radius: 3px; margin-top: 7px; overflow: hidden; }
+  .bar > div { height: 100%; background: var(--red); }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 16px 2px 8px; }
+  .ev { font-size: 13px; padding: 7px 10px; border-left: 3px solid var(--accent); background: var(--panel); margin-bottom: 5px; border-radius: 0 8px 8px 0; }
+  .ev.new { border-left-color: var(--green); } .ev.gone { border-left-color: var(--muted); } .ev.change { border-left-color: var(--orange); }
+  .ev.move { border-left-color: var(--accent); } .ev.fight, .ev.hp { border-left-color: var(--red); }
+  .card.fighting { box-shadow: 0 0 0 1px var(--red) inset; }
+  .tag { font-size: 10px; font-weight: 700; letter-spacing: .5px; background: var(--red); color: #fff; border-radius: 4px; padding: 1px 5px; }
+  .hp { display: flex; align-items: center; gap: 8px; margin-top: 7px; font-size: 12px; color: var(--muted); }
+  .hp .bar { flex: 1; margin: 0; height: 7px; }
+  .hp b { color: var(--text); min-width: 36px; text-align: right; }
+  .ev .t { color: var(--muted); font-size: 11px; margin-right: 6px; }
+  .warnbox { background: #2a2210; border: 1px solid #5a4a1a; color: #f3d9a0; border-radius: 10px; padding: 9px 12px; font-size: 13px; margin-bottom: 10px; }
+
+  /* réglages */
+  #settings { padding: 14px; overflow-y: auto; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .row small { display: block; color: var(--muted); }
+  .row input[type=text] { background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 8px; width: 150px; font-size: 15px; }
+  .row select { background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 8px; font-size: 15px; }
+  input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--accent); }
+  .row.stack { flex-direction: column; align-items: stretch; gap: 8px; }
+  .row.stack input { width: 100%; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 8px; font-size: 15px; }
+  .row.stack .actions { display: flex; align-items: center; gap: 10px; }
+  #siteStatus { font-size: 12px; color: var(--muted); }
+  #siteStatus.ok { color: var(--green); } #siteStatus.err { color: var(--red); }
+
+  #toast { position: fixed; left: 12px; right: 12px; top: 12px; z-index: 10; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+  #toast div { background: #1d2b4d; border: 1px solid var(--accent); padding: 10px 12px; border-radius: 10px; font-size: 14px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.4); animation: pop .2s ease-out; }
+  @keyframes pop { from { transform: translateY(-10px); opacity: 0 } }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="dot"></span>
+  <h1>PG Companion</h1>
+  <span id="statusText">connexion…</span>
+  <button class="drone unknown" id="droneBtn" type="button" title="DroneHandler : toucher pour activer / mettre en pause">Drone ?</button>
+</header>
+<nav>
+  <button data-tab="chat" class="active">Tchat<span class="badge" id="badgeChat"></span></button>
+  <button data-tab="rev">Revenants<span class="badge" id="badgeRev"></span></button>
+  <button data-tab="settings">Réglages</button>
+</nav>
+<main>
+  <section id="tab-chat" class="active">
+    <div class="live" id="liveChat"><img alt="Tchat en direct"></div>
+    <div id="chatList"><div class="empty">En attente de messages du jeu…</div></div>
+    <div id="chanBar"></div>
+    <form id="composer" autocomplete="off">
+      <input id="msg" maxlength="250" placeholder="Écrire dans le tchat du jeu…" enterkeyhint="send">
+      <button id="sendBtn" type="submit">Envoyer</button>
+    </form>
+  </section>
+  <section id="tab-rev">
+    <div class="live" id="liveRev" style="padding-bottom:4px"><img alt="Panneau Revenants en direct"></div>
+    <div id="revScroll">
+      <div id="revWarn"></div>
+      <div id="revList"></div>
+      <h2>Activité</h2>
+      <div id="evList"><div class="empty">Aucun changement pour l'instant.</div></div>
+    </div>
+  </section>
+  <section id="tab-settings">
+    <div id="settings">
+      <div class="row"><label>Son des alertes<small>Bip à chaque évènement</small></label><input type="checkbox" id="optSound" checked></div>
+      <div class="row"><label>Vibration</label><input type="checkbox" id="optVibrate" checked></div>
+      <div class="row"><label>Alerte sur chaque message<small>Sinon : seulement les mots-clés</small></label><input type="checkbox" id="optChatAll"></div>
+      <div class="row"><label>Mots-clés du tchat<small>Séparés par des virgules (ton pseudo…)</small></label><input type="text" id="optKeywords" placeholder="pseudo, XC"></div>
+      <div class="row"><label>Image en direct<small>Affiche aussi la capture brute du jeu</small></label><input type="checkbox" id="optLive"></div>
+      <div class="row"><label>Entrée ouvre le tchat<small>Décocher si la saisie est déjà active</small></label><input type="checkbox" id="optOpenEnter" checked></div>
+      <div class="row"><label>Canaux du tchat<small>Entrée puis ↑/↓ en jeu. DroneHandler doit être en pause</small></label><button class="iconbtn" id="discoverBtn">Détecter</button></div>
+      <div class="row"><label>Tester les alertes</label><button class="iconbtn" id="testBtn">Tester</button></div>
+      <div class="row stack">
+        <label>Site PG Progression<small>Partage les Revenants avec tous les joueurs du site. L'adresse et la clé API se trouvent sur l'onglet Revenants du site</small></label>
+        <input type="url" id="siteUrl" placeholder="https://pgp.watolua.fr" autocomplete="off">
+        <input type="password" id="siteKey" placeholder="Clé API (pgc_…)" autocomplete="off">
+        <div class="actions"><button class="iconbtn" id="siteSave">Enregistrer</button><span id="siteStatus"></span></div>
+      </div>
+      <div class="row"><label>Version<small>Mise à jour automatique au démarrage</small></label><span id="version"></span></div>
+    </div>
+  </section>
+</main>
+<div id="toast"></div>
+<script>
+(() => {
+  const qs = new URLSearchParams(location.search);
+  let key = qs.get("k");
+  try { if (key) localStorage.setItem("pgk", key); else key = localStorage.getItem("pgk"); } catch (e) {}
+  if (qs.get("k")) history.replaceState(null, "", location.pathname);
+
+  const $ = (id) => document.getElementById(id);
+  const opts = { sound: true, vibrate: true, chatAll: false, keywords: "", live: false, channel: "" };
+  try { Object.assign(opts, JSON.parse(localStorage.getItem("pgopts") || "{}")); } catch (e) {}
+  const saveOpts = () => { try { localStorage.setItem("pgopts", JSON.stringify(opts)); } catch (e) {} };
+
+  let chatAfter = 0, eventAfter = 0, firstLoad = true, tab = "chat";
+  let unreadChat = 0, unreadRev = 0;
+  const pending = [];   // messages envoyés pas encore relus dans le jeu
+
+  function api(path, body) {
+    const url = path + (path.includes("?") ? "&" : "?") + "k=" + encodeURIComponent(key || "");
+    return fetch(url, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {})
+      .then(r => r.json().then(j => { if (!r.ok) throw new Error(j.error || j.message || r.status); return j; }));
+  }
+
+  // ----- onglets
+  document.querySelectorAll("nav button").forEach(b => b.onclick = () => setTab(b.dataset.tab));
+  function setTab(t) {
+    tab = t;
+    document.querySelectorAll("nav button").forEach(b => b.classList.toggle("active", b.dataset.tab === t));
+    document.querySelectorAll("section").forEach(s => s.classList.toggle("active", s.id === "tab-" + t));
+    if (t === "chat") { unreadChat = 0; scrollChat(true); }
+    if (t === "rev") unreadRev = 0;
+    badges();
+  }
+  function badges() {
+    $("badgeChat").textContent = unreadChat || "";
+    $("badgeRev").textContent = unreadRev || "";
+    document.title = (unreadChat + unreadRev ? `(${unreadChat + unreadRev}) ` : "") + "PG Companion";
+  }
+
+  // ----- alertes
+  let audio;
+  document.addEventListener("pointerdown", () => {
+    if (!audio) try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+    if (audio && audio.state === "suspended") audio.resume();
+    if (window.isSecureContext && "Notification" in window && Notification.permission === "default") Notification.requestPermission();
+  });
+  function beep(kind) {
+    if (!opts.sound || !audio) return;
+    const notes = kind === "fight" ? [520, 520, 780, 780] : kind === "rev" ? [880, 660, 990] : [660];
+    notes.forEach((f, i) => {
+      const o = audio.createOscillator(), g = audio.createGain();
+      o.frequency.value = f; o.type = "sine";
+      const t = audio.currentTime + i * 0.16;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+      o.connect(g).connect(audio.destination); o.start(t); o.stop(t + 0.15);
+    });
+  }
+  function alertUser(text, kind) {
+    beep(kind);
+    if (opts.vibrate && navigator.vibrate) navigator.vibrate(kind === "fight" ? [250, 100, 250, 100, 250] : kind === "rev" ? [120, 80, 120] : 80);
+    const d = document.createElement("div"); d.textContent = text; $("toast").appendChild(d);
+    setTimeout(() => d.remove(), 5000);
+    if (document.hidden && window.isSecureContext && "Notification" in window && Notification.permission === "granted")
+      try { new Notification("PG Companion", { body: text }); } catch (e) {}
+  }
+
+  // ----- tchat
+  const fmt = (ts) => new Date(ts * 1000).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  const norm = (s) => s.toLowerCase().replace(/[^a-z0-9à-ü]/g, "");
+  function nearBottom() { const l = $("chatList"); return l.scrollHeight - l.scrollTop - l.clientHeight < 80; }
+  function scrollChat(force) { const l = $("chatList"); if (force || nearBottom()) l.scrollTop = l.scrollHeight; }
+  function keywords() { return opts.keywords.split(",").map(s => s.trim().toLowerCase()).filter(Boolean); }
+
+  function msgEl(m, cls) {
+    const d = document.createElement("div"); d.className = "msg " + (cls || "");
+    const meta = document.createElement("div"); meta.className = "meta";
+    const chan = document.createElement("span");
+    const c = (m.channel || "").toLowerCase();
+    chan.className = "chan" + (c.includes("escouade") ? " escouade" : c.includes("global") ? " global" : "");
+    chan.textContent = m.channel ? "[" + m.channel + "]" : "";
+    const author = document.createElement("span"); author.className = "author"; author.textContent = m.author || "";
+    const time = document.createElement("span"); time.className = "time"; time.textContent = fmt(m.ts);
+    meta.append(chan, author, time);
+    const body = document.createElement("div"); body.className = "body"; body.textContent = m.text || m.raw;
+    d.append(meta, body);
+    return d;
+  }
+
+  function addChat(list) {
+    const box = $("chatList"); const stick = nearBottom();
+    if (list.length && box.querySelector(".empty")) box.innerHTML = "";
+    const kws = keywords();
+    for (const m of list) {
+      // un message envoyé depuis le téléphone qui revient du jeu remplace sa version "en attente"
+      const idx = pending.findIndex(p => norm(m.raw).includes(norm(p.text).slice(0, 30)));
+      let cls = "";
+      if (idx >= 0) { pending[idx].el.remove(); pending.splice(idx, 1); cls = "mine"; }
+      const hl = kws.some(k => (m.raw || "").toLowerCase().includes(k));
+      if (hl) cls += " hl";
+      box.appendChild(msgEl(m, cls));
+      if (!firstLoad && !cls.includes("mine")) {
+        if (tab !== "chat" || document.hidden) unreadChat++;
+        if (opts.chatAll || hl) alertUser((m.author ? m.author + " : " : "") + (m.text || m.raw), "chat");
+      }
+    }
+    pending.forEach(p => box.appendChild(p.el));  // les messages en attente restent en bas
+    while (box.children.length > 300) box.firstChild.remove();
+    if (stick || firstLoad) scrollChat(true);
+  }
+
+  let drone = null, droneBusy = false;  // voyant DroneHandler : "on", "off" ou null
+  // ----- canaux : opts.channel "" = canal actuellement sélectionné dans le jeu
+  // changer de canal passe par les flèches, qui déclenchent DroneHandler : seulement s'il est en pause
+  let channels = { current: "", known: [] }, discovering = false;
+  const sameChan = (a, b) => !!a && !!b && norm(a) === norm(b);
+  const arrowsBlocked = () => drone === "on";
+  function renderChannels() {
+    const bar = $("chanBar"); bar.innerHTML = "";
+    const chip = (label, value, extra) => {
+      const b = document.createElement("button"); b.type = "button"; b.className = "chip " + (extra || "");
+      b.textContent = label;
+      if (value !== null) {
+        if (opts.channel === value) b.classList.add("on");
+        b.onclick = () => { opts.channel = value; saveOpts(); renderChannels(); $("msg").focus(); };
+      }
+      bar.append(b); return b;
+    };
+    chip(channels.current ? "Canal actuel : " + channels.current : "Canal actuel", "", channels.current ? "cur" : "");
+    for (const c of channels.known) {
+      const b = chip(c, c, sameChan(c, channels.current) ? "cur" : "");
+      if (arrowsBlocked() && !sameChan(c, channels.current)) { b.disabled = true; b.title = "Mets DroneHandler en pause"; }
+    }
+    const d = chip(discovering ? "Détection…" : channels.known.length ? "↻" : "Détecter les canaux", null);
+    d.title = "Détecter les canaux du jeu (DroneHandler doit être en pause)";
+    d.disabled = discovering || arrowsBlocked(); d.onclick = discover;
+    $("discoverBtn").disabled = d.disabled;
+    if (arrowsBlocked()) {
+      const h = document.createElement("span"); h.className = "chanhint";
+      h.textContent = "Drone actif : pause pour changer de canal"; bar.append(h);
+    }
+    const target = opts.channel && !(arrowsBlocked() && !sameChan(opts.channel, channels.current)) ? opts.channel : channels.current;
+    $("msg").placeholder = "Écrire" + (target ? " dans " + target : "") + "…";
+  }
+  function sendChannel() {
+    // drone actif : on écrit dans le canal actuel plutôt que de refuser l'envoi
+    if (!opts.channel || sameChan(opts.channel, channels.current) || arrowsBlocked()) return null;
+    return opts.channel;
+  }
+  function discover() {
+    if (arrowsBlocked()) { alertUser("Mets DroneHandler en pause (voyant rouge) avant la détection", "chat"); return; }
+    discovering = true; renderChannels();
+    alertUser("Détection des canaux… (le jeu passe au premier plan)", "chat");
+    api("/api/channels/discover", {}).then(r => {
+      channels.known = r.known;
+      alertUser(r.known.length + " canaux : " + r.known.join(", "), "chat");
+    }).catch(err => alertUser("Détection impossible : " + err.message, "chat"))
+      .finally(() => { discovering = false; renderChannels(); });
+  }
+  $("discoverBtn").onclick = discover;
+  api("/api/channels").then(c => { channels = c; renderChannels(); }).catch(() => renderChannels());
+
+  // ----- voyant DroneHandler (vert = clics actifs) : le toucher bascule
+  function renderDrone() {
+    const b = $("droneBtn");
+    b.hidden = drone === "absent";  // DroneHandler pas lancé : pas de voyant
+    b.className = "drone " + (drone || "unknown");
+    b.textContent = "Drone " + (drone === "on" ? "actif" : drone === "off" ? "en pause" : "?");
+    b.disabled = droneBusy;
+  }
+  $("droneBtn").onclick = () => {
+    droneBusy = true; renderDrone();
+    api("/api/drone/toggle", {}).then(r => { drone = r.drone; })
+      .catch(err => alertUser("DroneHandler : " + err.message, "chat"))
+      .finally(() => { droneBusy = false; renderDrone(); renderChannels(); });
+  };
+
+  $("composer").onsubmit = (e) => {
+    e.preventDefault();
+    const text = $("msg").value.trim(); if (!text) return;
+    $("sendBtn").disabled = true;
+    const ch = sendChannel();
+    const el = msgEl({ channel: ch || channels.current, author: "moi", text, ts: Date.now() / 1000 }, "mine pending");
+    $("chatList").appendChild(el); scrollChat(true);
+    const p = { text, el }; pending.push(p);
+    api("/api/send", { text, channel: ch }).then(() => {
+      $("msg").value = "";
+      setTimeout(() => { if (pending.includes(p)) el.classList.remove("pending"); }, 6000);
+    }).catch(err => {
+      el.remove(); pending.splice(pending.indexOf(p), 1);
+      alertUser("Échec de l'envoi : " + err.message, "chat");
+    }).finally(() => { $("sendBtn").disabled = false; $("msg").focus(); });
+  };
+
+  // ----- revenants
+  function renderRevs(revs, status) {
+    $("revWarn").innerHTML = status.game && !status.revenants_panel
+      ? '<div class="warnbox">Le panneau Revenants n\'est pas visible à l\'écran. Ouvre l\'onglet REVENANTS dans le jeu pour que la liste se mette à jour.</div>' : "";
+    const list = $("revList"); list.innerHTML = "";
+    if (!revs.length) { list.innerHTML = '<div class="empty">Aucun Revenant détecté.</div>'; return; }
+    for (const r of revs) {
+      const c = document.createElement("div"); c.className = "card" + (r.danger ? " danger" : "") + (r.bar > 0 ? " fighting" : "");
+      const top = document.createElement("div"); top.className = "top";
+      const n = document.createElement("span"); n.className = "name"; n.textContent = (r.danger ? "⚠ " : "") + r.name;
+      const w = document.createElement("span"); w.className = "when"; w.textContent = r.time || "";
+      top.append(n);
+      if (r.bar > 0) { const t = document.createElement("span"); t.className = "tag"; t.textContent = "EN COMBAT"; top.append(t); }
+      top.append(w);
+      const g = document.createElement("div"); g.className = "grid";
+      const cell = (label, val) => { const s = document.createElement("div"); s.innerHTML = "<span></span> "; s.firstChild.textContent = label; s.append(val || "—"); return s; };
+      g.append(cell("Système", r.system), cell("Infos", r.info), cell("Planète", r.planet), cell("Statut", r.status));
+      c.append(top, g);
+      if (r.bar > 0) {
+        const hp = document.createElement("div"); hp.className = "hp";
+        hp.innerHTML = '<span>Vie</span><div class="bar"><div></div></div><b></b>';
+        hp.querySelector(".bar div").style.width = Math.round(r.bar * 100) + "%";
+        hp.querySelector("b").textContent = Math.round(r.bar * 100) + " %";
+        c.append(hp);
+      }
+      list.append(c);
+    }
+  }
+  function addEvents(evs) {
+    const box = $("evList");
+    if (evs.length && box.querySelector(".empty")) box.innerHTML = "";
+    for (const e of evs) {
+      const d = document.createElement("div"); d.className = "ev " + e.type;
+      const t = document.createElement("span"); t.className = "t"; t.textContent = fmt(e.ts);
+      d.append(t, e.text); box.prepend(d);
+      if (!firstLoad) { if (tab !== "rev" || document.hidden) unreadRev++; alertUser(e.text, e.type === "fight" ? "fight" : "rev"); }
+    }
+  }
+
+  // ----- statut
+  function renderStatus(s) {
+    const age = s.last_scan ? Date.now() / 1000 - s.last_scan : 1e9;
+    const dot = $("dot");
+    dot.className = "dot " + (s.game && age < 10 && !s.error ? "ok" : s.game ? "warn" : "");
+    $("statusText").textContent = s.error ? s.error : !s.game ? "jeu non détecté" : age < 10 ? "en direct" : "scan en retard";
+  }
+
+  // ----- images en direct
+  function refreshLive() {
+    const on = opts.live;
+    $("liveChat").classList.toggle("on", on); $("liveRev").classList.toggle("on", on);
+    if (!on) return;
+    const t = Date.now(), k = encodeURIComponent(key || "");
+    if (tab === "chat") $("liveChat").firstChild.src = `/api/snap/chat.jpg?k=${k}&t=${t}`;
+    if (tab === "rev") $("liveRev").firstChild.src = `/api/snap/revenants.jpg?k=${k}&t=${t}`;
+  }
+
+  // ----- boucle
+  let failures = 0;
+  function poll() {
+    api(`/api/state?chat_after=${chatAfter}&event_after=${eventAfter}`).then(st => {
+      failures = 0;
+      renderStatus(st.status);
+      if (st.status.channel && st.status.channel !== channels.current) { channels.current = st.status.channel; renderChannels(); }
+      if (!droneBusy && st.status.drone !== drone) { drone = st.status.drone; renderDrone(); renderChannels(); }
+      if (st.chat.length) { addChat(st.chat); chatAfter = st.chat[st.chat.length - 1].id; }
+      if (st.events.length) { addEvents(st.events); eventAfter = st.events[st.events.length - 1].id; }
+      renderRevs(st.revenants, st.status);
+      renderSite(st.site, st.status);
+      firstLoad = false; badges(); refreshLive();
+    }).catch(err => {
+      failures++;
+      $("dot").className = "dot";
+      $("statusText").textContent = err.message.includes("clé") ? "clé invalide : touche ici" : "PC injoignable…";
+    }).finally(() => setTimeout(poll, failures ? 3000 : 1500));
+  }
+
+  // ----- réglages
+  $("optSound").checked = opts.sound; $("optVibrate").checked = opts.vibrate; $("optChatAll").checked = opts.chatAll;
+  $("optKeywords").value = opts.keywords; $("optLive").checked = opts.live;
+  $("optSound").onchange = e => { opts.sound = e.target.checked; saveOpts(); };
+  $("optVibrate").onchange = e => { opts.vibrate = e.target.checked; saveOpts(); };
+  $("optChatAll").onchange = e => { opts.chatAll = e.target.checked; saveOpts(); };
+  $("optKeywords").oninput = e => { opts.keywords = e.target.value; saveOpts(); };
+  $("optLive").onchange = e => { opts.live = e.target.checked; saveOpts(); refreshLive(); };
+  $("testBtn").onclick = () => setTimeout(() => alertUser("Test : nouveau Revenant XC-Test — Gemini", "rev"), 50);
+  api("/api/config").then(c => {
+    $("optOpenEnter").checked = c.input.open_with_enter;
+    $("version").textContent = c.version === "0.0.0" ? "dev" : c.version;
+    $("siteUrl").value = c.site.url;
+    $("siteKey").placeholder = c.site.key_set ? "Clé API enregistrée (laisser vide pour la garder)" : "Clé API (pgc_…)";
+  }).catch(() => {});
+  $("optOpenEnter").onchange = e => api("/api/config", { input: { open_with_enter: e.target.checked } });
+
+  // ----- site PG Progression
+  function renderSite(site, status) {
+    const el = $("siteStatus");
+    if (!site || !site.enabled) { el.className = ""; el.textContent = "désactivé"; return; }
+    if (site.ok === false) { el.className = "err"; el.textContent = "✗ " + site.error; return; }
+    el.className = site.ok ? "ok" : "";
+    el.textContent = !status.revenants_panel ? "en attente du panneau Revenants"
+      : site.ok ? "✓ envoyé à " + fmt(site.last) : "envoi en cours…";
+  }
+  $("siteSave").onclick = () => {
+    const body = { site: { url: $("siteUrl").value.trim(), key: $("siteKey").value.trim() } };
+    $("siteSave").disabled = true;
+    api("/api/config", body).then(() => {
+      if (body.site.key) { $("siteKey").value = ""; $("siteKey").placeholder = "Clé API enregistrée (laisser vide pour la garder)"; }
+      $("siteStatus").className = ""; $("siteStatus").textContent = body.site.url ? "enregistré" : "désactivé";
+    }).catch(err => { $("siteStatus").className = "err"; $("siteStatus").textContent = "✗ " + err.message; })
+      .finally(() => { $("siteSave").disabled = false; });
+  };
+
+  function askKey(msg) {
+    // clé absente (page ouverte sans ?k=…) : on la demande, elle est retenue sur ce téléphone
+    const k = prompt((msg ? msg + " " : "") + "Clé d'accès (affichée sur le PC, après ?k= dans le lien) :");
+    if (!k) { $("statusText").textContent = "clé manquante : touche ici"; return false; }
+    key = k.trim(); try { localStorage.setItem("pgk", key); } catch (e) {}
+    return true;
+  }
+  $("statusText").onclick = () => { if (askKey()) location.reload(); };
+  if (!key && !askKey()) return;
+  poll();
+})();
+</script>
+</body>
+</html>

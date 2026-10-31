@@ -1,0 +1,4 @@
+mss==10.2.0
+pillow==13.0.0
+winocr==0.0.15
+qrcode==8.2

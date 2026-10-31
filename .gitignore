@@ -1,0 +1,9 @@
+# données de chaque joueur (clé d'accès, clé API du site, tchat)
+config.json
+chat_log.jsonl
+
+build/
+dist/
+*.spec
+__pycache__/
+.pytest_cache/
