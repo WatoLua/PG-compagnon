@@ -166,13 +166,40 @@ class ChatTracker:
 # --------------------------------------------------------------------------- revenants
 
 REV_NAME_RE = re.compile(r"^([A-Z0-9]{2})[\-\.\s_~]+([A-Za-z0-9]{3,})")
-TIME_RE = re.compile(r"(\d{1,2}|[\'jJoOl]{1,2}\d?)\D{0,4}?(\d{1,2})\s*[:;.,]\s*(\d{2})")
-HHMM_RE = re.compile(r"(\d{1,2})\s*[:;.,]\s*(\d{2})")
+# date d'apparition affichée par le jeu : « Oct 31 · 04:15 » (mois en anglais)
+MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+DATE_RE = re.compile(r"\b([A-Za-z]{3})[a-z]*\.?\s*(\d{1,2})\b")
+# l'heure termine la ligne : on la cherche à la fin pour ne pas prendre le jour (« Nov 1, 04:15 » -> 04:15)
+TIME_END_RE = re.compile(r"(\d{1,2})\s*[:;.,·•'’]\s*(\d{2})\D*$")
+TIME_NO_COLON_RE = re.compile(r"(\d{2})\s+(\d{2})\D*$")  # « : » non lu par l'OCR
+DIGIT_FIX = str.maketrans("OoQlI|", "000111")  # lettres lues à la place des chiffres (O4:15, 2l:32)
 
 # colonnes du panneau Revenants (fractions de la largeur du panneau)
 COL_LEFT = (0.14, 0.46)
 COL_RIGHT = (0.46, 1.0)
 COL_TIME = (0.80, 1.0)
+
+
+def read_when(text):
+    """'Nov 1 · 04:15' -> ('04:15', '11-01') ; chaîne vide pour ce qui n'a pas pu être lu."""
+    day = ""
+    m = DATE_RE.search(text)
+    if m and m.group(1).lower() in MONTHS and 1 <= int(m.group(2)) <= 31:
+        day = f"{MONTHS.index(m.group(1).lower()) + 1:02d}-{int(m.group(2)):02d}"
+        text = text[m.end():]
+    text = text.translate(DIGIT_FIX)
+    for rx in (TIME_END_RE, TIME_NO_COLON_RE):
+        m = rx.search(text)
+        if m and int(m.group(1)) < 24 and int(m.group(2)) < 60:
+            return f"{int(m.group(1)):02d}:{m.group(2)}", day
+    return "", day
+
+
+def row_when(lines, y, row_h):
+    """Date de l'entrée dont le nom est à la hauteur y : l'OCR coupe parfois « Nov 1 » et « 04:15 »
+    en deux lignes, on recolle tout ce qui est sur la ligne du nom, de gauche à droite."""
+    on_row = sorted((l for l in lines if abs(l["y"] - y) < row_h * 0.35), key=lambda l: l["x"])
+    return read_when(" ".join(l["text"] for l in on_row))
 
 
 def fix_name(prefix, rest):
@@ -243,6 +270,7 @@ def parse_revenants(panel_img):
     left.sort(key=lambda l: l["y"])
     right = ocr_lines(_sub(panel_img, COL_RIGHT), scale=3)
     times = ocr_lines(_sub(panel_img, COL_TIME), scale=4)
+    times_retry = []  # 2e lecture de la colonne de la date, faite seulement si une heure manque
 
     all_text = " ".join(l["text"] for l in left + right).lower()
     if not left or ("statut" not in all_text and "type" not in all_text and "planete" not in all_text
@@ -276,13 +304,16 @@ def parse_revenants(panel_img):
 
         lft = [l["text"].strip() for l in left if in_row(l) and l["y"] > y + 3]
         rgt = [l for l in right if in_row(l) and l["y"] > y + 3]  # la ligne du nom porte la date
-        tms = [l for l in times if abs(l["y"] - y) < row_h * 0.35]
-
-        when = ""
-        if tms:
-            raw = tms[0]["text"]
-            m = HHMM_RE.search(raw)
-            when = f"{int(m.group(1)):02d}:{m.group(2)}" if m else raw.strip()
+        when, day = row_when(times, y, row_h)
+        if not when:
+            # la colonne de droite lit aussi la date sur la ligne du nom, à une autre échelle
+            when, day2 = row_when(right, y, row_h)
+            day = day or day2
+        if not when:
+            if not times_retry:
+                times_retry = ocr_lines(_sub(panel_img, COL_TIME), scale=3, mode="max")
+            when, day2 = row_when(times_retry, y, row_h)
+            day = day or day2
 
         info, status = "", ""
         status_line = None
@@ -307,6 +338,7 @@ def parse_revenants(panel_img):
             "name": name,
             "danger": name.startswith("XC"),
             "time": when,
+            "date": day,
             "system": location,
             "planet": planet,
             "info": info,
