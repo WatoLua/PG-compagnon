@@ -11,20 +11,28 @@ HEARTBEAT = 30  # renvoi même sans changement : le site sait que la liste est t
 FRESH = 15      # au-delà, la dernière liste lue est trop vieille pour être envoyée (jeu fermé, réduit…)
 RETRY = 10      # pause après un échec d'envoi
 HHMM = re.compile(r"(\d{2}):(\d{2})")
+MMDD = re.compile(r"(\d{2})-(\d{2})")
 
 
-def appeared_at(hhmm):
-    """Heure HH:MM lue dans le jeu (heure du PC) -> date ISO avec fuseau ; la veille si elle tombe dans le futur."""
+def appeared_at(hhmm, mmdd=""):
+    """Heure HH:MM et jour MM-DD lus dans le jeu (heure du PC) -> date ISO avec fuseau.
+
+    Sans le jour : aujourd'hui, ou la veille si l'heure tombe dans le futur."""
     m = HHMM.fullmatch(hhmm or "")
     if not m:
         return None
     now = datetime.now()
     try:
         t = now.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0)
+        d = MMDD.fullmatch(mmdd or "")
+        if d:
+            t = t.replace(month=int(d.group(1)), day=int(d.group(2)))
+            if t > now + timedelta(days=1):
+                t = t.replace(year=t.year - 1)  # « Dec 31 » lu le 1er janvier
+        elif t > now + timedelta(minutes=5):
+            t -= timedelta(days=1)
     except ValueError:
         return None
-    if t > now + timedelta(minutes=5):
-        t -= timedelta(days=1)
     return t.astimezone().isoformat()  # heure locale naïve -> fuseau du PC (heure d'été comprise)
 
 
@@ -81,7 +89,7 @@ class SiteSync:
     def _post(self, payload):
         body = {
             "panelVisible": True,
-            "revenants": [dict(r, appearedAt=appeared_at(r.get("time"))) for r in payload],
+            "revenants": [dict(r, appearedAt=appeared_at(r.get("time"), r.get("date"))) for r in payload],
         }
         req = urllib.request.Request(
             self.cfg["site_url"].rstrip("/") + "/api/revenants/report",
